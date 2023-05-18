@@ -1,11 +1,12 @@
-name: Publish multiarch images on registry.hub.docker.com
+name: Publish multiarch images
 on:
   push:
     tags:
       - "*"
+    paths:
+      - .github/workflows/publish-container.yaml
 
 env:
-  REGISTRY: registry.hub.docker.com
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -35,7 +36,7 @@ jobs:
         working-directory: postgres-appliance
         run: |
           PGVERSION=$(sed -n 's/^ARG PGVERSION=\([1-9][0-9]*\).*$/\1/p' Dockerfile)
-          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-$PGVERSION:${GITHUB_REF/refs\/tags\//}"
+          IMAGE="${{ env.IMAGE_NAME }}-$PGVERSION:${GITHUB_REF/refs\/tags\//}"
           echo "NAME=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
@@ -50,14 +51,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Login to Quay.io
+        uses: docker/login-action@v2
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_ROBOT_TOKEN }}
+
       - name: Build and export to local docker for testing
         uses: docker/build-push-action@v4
         with:
           context: "postgres-appliance/"
           load: true
           tags: ${{ steps.image.outputs.NAME }}
-          build-args: |
-            TIMESCALEDB_APACHE_ONLY=false
 
       - name: Test spilo docker image
         env:
@@ -70,7 +76,7 @@ jobs:
         with:
           context: "postgres-appliance/"
           push: true
-          tags: "${{ steps.image.outputs.NAME }}"
+          tags: |
+            ${{ steps.image.outputs.NAME }}
+            quay.io/${{ steps.image.outputs.NAME }}
           platforms: linux/amd64,linux/arm64
-          build-args: |
-            TIMESCALEDB_APACHE_ONLY=false
